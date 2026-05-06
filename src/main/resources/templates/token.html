@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Ваш Access Token</title>
+</head>
+<body>
+<h1>Аутентификация через Google прошла успешно</h1>
+<p>Ваш Access Token:</p>
+<textarea rows="4" cols="80" readonly th:text="${accessToken}"></textarea>
+<p><small>Этот токен можно использовать для доступа к Google API (если запрошены соответствующие scope).</small></p>
+<a href="/">На главную</a>
+</body>
+</html>
