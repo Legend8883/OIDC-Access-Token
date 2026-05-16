@@ -1,14 +1,22 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <title>Главная</title>
+    <meta charset="UTF-8"/>
+    <title>TokenVault</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Sora:wght@300;400;600&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" th:href="@{/css/style.css}"/>
 </head>
-<body>
-<h1>Добро пожаловать</h1>
-<p>Нажмите кнопку, чтобы войти через Google:</p>
-<a href="/oauth2/authorization/google">
-    <button>Войти с Google</button>
-</a>
+<body class="auth-page">
+<div class="auth-container" style="text-align:center">
+    <div class="brand" style="justify-content:center;margin-bottom:2rem">
+        <span class="brand-icon" style="font-size:3rem">⬡</span>
+    </div>
+    <h1 style="font-family:'Space Mono',monospace;font-size:2rem;margin-bottom:.5rem">TokenVault</h1>
+    <p style="color:var(--text-muted);margin-bottom:2rem">OAuth2 + JWT токен-менеджер</p>
+    <a th:href="@{/login}" class="btn btn-primary">Войти</a>
+    <span style="margin:0 1rem;color:var(--text-muted)">или</span>
+    <a th:href="@{/register}" class="btn btn-ghost">Зарегистрироваться</a>
+</div>
 </body>
 </html>
