@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: oidc_postgres
+    environment:
+      POSTGRES_DB: OIDC
+      POSTGRES_USER: ${SPRING_DATASOURCE_USERNAME}
+      POSTGRES_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+    ports:
+      - "5433:5432"   # хост-порт 5433, т.к. 5432 занят локальным postgres
+    volumes:
+      - oidc_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${SPRING_DATASOURCE_USERNAME} -d OIDC" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  oidc_postgres_data:
