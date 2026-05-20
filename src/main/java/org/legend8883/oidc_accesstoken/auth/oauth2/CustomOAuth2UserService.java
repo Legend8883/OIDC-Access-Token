@@ -33,7 +33,9 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
         UserEntity appUser = userService.findOrCreateOAuth2User(provider, providerId, name, email);
 
-        return new OAuth2UserPrincipal(oauth2User, appUser);
+        String accessToken = userRequest.getAccessToken().getTokenValue();
+
+        return new OAuth2UserPrincipal(oauth2User, appUser, accessToken);
     }
 
     private AuthProvider resolveProvider(String registrationId) {
@@ -45,11 +47,10 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     }
 
     private String extractProviderId(OAuth2User user, String registrationId) {
-        Object githubId = user.getAttribute("id");
-        Object yandexId = user.getAttribute("id");
+        Object id = user.getAttribute("id");
         return switch (registrationId.toLowerCase()) {
-            case "github" -> githubId != null ? githubId.toString() : user.getName();
-            case "yandex" -> yandexId != null ? yandexId.toString() : user.getName();
+            case "github" -> id != null ? id.toString() : user.getName();
+            case "yandex" -> id != null ? id.toString() : user.getName();
             default -> user.getName();
         };
     }

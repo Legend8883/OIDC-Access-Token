@@ -15,10 +15,12 @@ public class OAuth2UserPrincipal implements OAuth2User {
 
     private final OAuth2User delegate;
     private final UserEntity userEntity;
+    private final String accessToken;
 
-    public OAuth2UserPrincipal(OAuth2User delegate, UserEntity userEntity) {
+    public OAuth2UserPrincipal(OAuth2User delegate, UserEntity userEntity, String accessToken) {
         this.delegate = delegate;
         this.userEntity = userEntity;
+        this.accessToken = accessToken;
     }
 
     @Override

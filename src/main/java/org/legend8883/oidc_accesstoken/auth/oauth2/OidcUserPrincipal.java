@@ -14,11 +14,17 @@ import java.util.List;
 import java.util.Map;
 
 @Getter
-@RequiredArgsConstructor
 public class OidcUserPrincipal implements OidcUser {
 
     private final OidcUser delegate;
     private final UserEntity userEntity;
+    private final String accessToken;
+
+    public OidcUserPrincipal(OidcUser delegate, UserEntity userEntity, String accessToken) {
+        this.delegate = delegate;
+        this.userEntity = userEntity;
+        this.accessToken = accessToken;
+    }
 
     @Override
     public Map<String, Object> getClaims() {
@@ -50,4 +56,3 @@ public class OidcUserPrincipal implements OidcUser {
         return userEntity.getUsername();
     }
 }
-

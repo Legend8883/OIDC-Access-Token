@@ -31,6 +31,9 @@ public class CustomOidcUserService extends OidcUserService {
         UserEntity userEntity = userService.findOrCreateOAuth2User(
                 AuthProvider.GOOGLE, providerId, name, email);
 
-        return new OidcUserPrincipal(oidcUser, userEntity);
+        // Достаём access token из userRequest - он есть прямо здесь при логине
+        String accessToken = userRequest.getAccessToken().getTokenValue();
+
+        return new OidcUserPrincipal(oidcUser, userEntity, accessToken);
     }
 }
