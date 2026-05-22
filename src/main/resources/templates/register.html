@@ -21,7 +21,6 @@
         <div th:if="${errorMessage}" class="alert alert-error" th:text="${errorMessage}"></div>
 
         <form th:action="@{/register}" method="post" th:object="${registrationRequest}">
-            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
             <div class="form-group">
                 <label for="username">Логин</label>
                 <input id="username" th:field="*{username}" type="text" placeholder="минимум 3 символа" required/>

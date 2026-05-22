@@ -98,30 +98,15 @@ public class AppController {
         return ResponseEntity.ok(Map.of("accessToken", token));
     }
 
-    // Обновление наших собственных JWT токенов (local)
     @PostMapping("/token/refresh")
-    public String refreshLocalToken(Authentication authentication,
-                                    HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    RedirectAttributes redirectAttributes) {
+    public String refreshToken(Authentication authentication,
+                               HttpServletRequest request,
+                               HttpServletResponse response,
+                               RedirectAttributes redirectAttributes) {
         if (authentication == null || !authentication.isAuthenticated()) {
             return "redirect:/login";
         }
-        TokenResponse tokens = tokenFacadeService.refreshLocalTokens(request, response, authentication);
-        redirectAttributes.addFlashAttribute("refreshed", true);
-        redirectAttributes.addFlashAttribute("tokens", tokens);
-        return "redirect:/token";
-    }
-
-    // Обновление access token у стороннего провайдера (Google, Yandex) по refresh token из БД
-    @PostMapping("/token/refresh/oauth2")
-    public String refreshOAuth2Token(Authentication authentication,
-                                     HttpServletResponse response,
-                                     RedirectAttributes redirectAttributes) {
-        if (authentication == null || !authentication.isAuthenticated()) {
-            return "redirect:/login";
-        }
-        TokenResponse tokens = tokenFacadeService.refreshOAuth2Tokens(authentication, response);
+        TokenResponse tokens = tokenFacadeService.refreshTokens(request, response, authentication);
         redirectAttributes.addFlashAttribute("refreshed", true);
         redirectAttributes.addFlashAttribute("tokens", tokens);
         return "redirect:/token";
@@ -133,8 +118,18 @@ public class AppController {
         if (auth != null) {
             new SecurityContextLogoutHandler().logout(request, response, auth);
         }
-        request.getSession().invalidate();
+        // Удаляем оба токена из cookie
+        deleteCookie(response, "access_token");
+        deleteCookie(response, "refresh_token");
         return "redirect:/login?logout";
+    }
+
+    private void deleteCookie(HttpServletResponse response, String name) {
+        Cookie cookie = new Cookie(name, "");
+        cookie.setHttpOnly(true);
+        cookie.setPath("/");
+        cookie.setMaxAge(0);
+        response.addCookie(cookie);
     }
 
     private String extractCookieValue(HttpServletRequest request, String cookieName) {

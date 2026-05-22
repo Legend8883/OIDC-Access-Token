@@ -31,12 +31,12 @@ public class JwtTokenService {
         this.refreshTokenExpirationMs = refreshTokenExpirationMs;
     }
 
-    public String generateAccessToken(String username) {
-        return buildToken(username, accessTokenExpirationMs, "access");
+    public String generateAccessToken(String username, String provider) {
+        return buildToken(username, provider, accessTokenExpirationMs, "access");
     }
 
-    public String generateRefreshToken(String username) {
-        return buildToken(username, refreshTokenExpirationMs, "refresh");
+    public String generateRefreshToken(String username, String provider) {
+        return buildToken(username, provider, refreshTokenExpirationMs, "refresh");
     }
 
     public String refreshAccessToken(String refreshToken) {
@@ -44,7 +44,8 @@ public class JwtTokenService {
         if (!"refresh".equals(claims.get("type"))) {
             throw new JwtException("Not a refresh token");
         }
-        return generateAccessToken(claims.getSubject());
+        String provider = claims.get("provider", String.class);
+        return generateAccessToken(claims.getSubject(), provider != null ? provider : "local");
     }
 
     public Claims parseToken(String token) {
@@ -65,12 +66,13 @@ public class JwtTokenService {
         }
     }
 
-    private String buildToken(String username, long expirationMs, String type) {
+    private String buildToken(String username, String provider, long expirationMs, String type) {
         Instant now = Instant.now();
         return Jwts.builder()
                 .id(UUID.randomUUID().toString())
                 .subject(username)
                 .claim("type", type)
+                .claim("provider", provider)   // <-- теперь провайдер знает токен
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusMillis(expirationMs)))
                 .signWith(secretKey)

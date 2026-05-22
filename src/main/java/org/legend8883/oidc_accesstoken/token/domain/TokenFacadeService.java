@@ -5,7 +5,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.legend8883.oidc_accesstoken.auth.local.LocalUserDetails;
 import org.legend8883.oidc_accesstoken.auth.oauth2.OAuth2UserPrincipal;
 import org.legend8883.oidc_accesstoken.auth.oauth2.OidcUserPrincipal;
 import org.legend8883.oidc_accesstoken.token.api.dto.TokenResponse;
@@ -25,45 +24,46 @@ import java.util.Arrays;
 @RequiredArgsConstructor
 public class TokenFacadeService {
 
-    private static final String LOCAL_REGISTRATION_ID = "local";
-
     private final JwtTokenService jwtTokenService;
     private final OAuth2AuthorizedClientRepository authorizedClientRepository;
-    private final OAuth2TokenRefreshService oauth2TokenRefreshService;
 
     @Value("${app.jwt.refresh-token-expiration-ms:86400000}")
     private long refreshTokenExpirationMs;
-
-    // ── Публичные методы ──────────────────────────────────────────────────────
 
     @Transactional
     public TokenResponse resolveTokens(Authentication authentication,
                                        HttpServletRequest request,
                                        HttpServletResponse response) {
-        Object principal = authentication.getPrincipal();
+        String username = authentication.getName();
+        String registrationId = resolveRegistrationId(authentication);
 
-        if (principal instanceof LocalUserDetails localUser) {
-            return resolveLocalTokens(localUser.getUsername(), request, response);
-        } else if (principal instanceof OidcUserPrincipal oidcUser) {
-            return resolveOAuth2Tokens(oidcUser, "google", request, response);
-        } else if (principal instanceof OAuth2UserPrincipal oauth2User) {
-            String provider = resolveProviderName(oauth2User.getUserEntity().getProvider());
-            return resolveOAuth2Tokens(oauth2User, provider, request, response);
-        }
+        String accessToken = extractCookieValue(request, "access_token");
 
-        throw new IllegalStateException("Unknown principal type: " + principal.getClass());
+        String refreshToken = authorizedClientRepository
+                .findByClientRegistrationIdAndPrincipalName(registrationId, username)
+                .map(OAuth2AuthorizedClientEntity::getRefreshTokenValue)
+                .orElse("(нет в БД)");
+
+        return TokenResponse.builder()
+                .accessToken(accessToken != null ? accessToken : "Нет токена — войдите заново")
+                .refreshToken(refreshToken)
+                .provider(registrationId.toUpperCase())
+                .isLocal("local".equals(registrationId))
+                .build();
     }
 
     @Transactional
-    public TokenResponse refreshLocalTokens(HttpServletRequest request,
-                                            HttpServletResponse response,
-                                            Authentication authentication) {
+    public TokenResponse refreshTokens(HttpServletRequest request,
+                                       HttpServletResponse response,
+                                       Authentication authentication) {
         String username = authentication.getName();
+        String registrationId = resolveRegistrationId(authentication);
+
         String refreshTokenValue = extractCookieValue(request, "refresh_token");
 
         if (refreshTokenValue != null && jwtTokenService.isTokenValid(refreshTokenValue)) {
             OAuth2AuthorizedClientEntity entity = authorizedClientRepository
-                    .findByClientRegistrationIdAndPrincipalName(LOCAL_REGISTRATION_ID, username)
+                    .findByClientRegistrationIdAndPrincipalName(registrationId, username)
                     .orElse(null);
 
             if (entity != null
@@ -71,129 +71,41 @@ public class TokenFacadeService {
                     && entity.getRefreshTokenExpiresAt() != null
                     && entity.getRefreshTokenExpiresAt().isAfter(Instant.now())) {
 
-                String newAccess = jwtTokenService.refreshAccessToken(refreshTokenValue);
+                String newAccess = jwtTokenService.generateAccessToken(username, registrationId);
                 setAccessTokenCookie(response, newAccess);
 
                 return TokenResponse.builder()
                         .accessToken(newAccess)
                         .refreshToken(refreshTokenValue)
-                        .provider("LOCAL")
-                        .isLocal(true)
+                        .provider(registrationId.toUpperCase())
+                        .isLocal("local".equals(registrationId))
                         .build();
             }
         }
 
-        return issueLocalTokenPair(username, response);
-    }
-
-    @Transactional
-    public TokenResponse refreshOAuth2Tokens(Authentication authentication,
-                                             HttpServletResponse response) {
-        Object principal = authentication.getPrincipal();
-
-        String username;
-        String registrationId;
-
-        if (principal instanceof OidcUserPrincipal oidcUser) {
-            username = oidcUser.getUserEntity().getUsername();
-            registrationId = "google";
-        } else if (principal instanceof OAuth2UserPrincipal oauth2User) {
-            username = oauth2User.getUserEntity().getUsername();
-            registrationId = resolveProviderName(oauth2User.getUserEntity().getProvider());
-        } else {
-            throw new IllegalStateException("Not an OAuth2 principal: " + principal.getClass());
-        }
-
-        String newAccessToken = oauth2TokenRefreshService.refreshAccessToken(registrationId, username);
-
-        if (newAccessToken != null) {
-            // Кладём свежий access token в cookie чтобы /token/current-access его показал
-            setAccessTokenCookie(response, newAccessToken);
-        }
-
-        return TokenResponse.builder()
-                .accessToken(newAccessToken != null ? newAccessToken : "Failed to refresh — check logs")
-                .refreshToken("(stored in DB)")
-                .provider(registrationId.toUpperCase())
-                .isLocal(false)
-                .build();
-    }
-
-    // ── Приватные методы ──────────────────────────────────────────────────────
-
-    private TokenResponse resolveLocalTokens(String username,
-                                             HttpServletRequest request,
-                                             HttpServletResponse response) {
-        String existingAccess = extractCookieValue(request, "access_token");
-        if (existingAccess != null && jwtTokenService.isTokenValid(existingAccess)) {
-            String storedRefresh = authorizedClientRepository
-                    .findByClientRegistrationIdAndPrincipalName(LOCAL_REGISTRATION_ID, username)
-                    .map(OAuth2AuthorizedClientEntity::getRefreshTokenValue)
-                    .orElse("(stored in DB)");
-            return TokenResponse.builder()
-                    .accessToken(existingAccess)
-                    .refreshToken(storedRefresh)
-                    .provider("LOCAL")
-                    .isLocal(true)
-                    .build();
-        }
-
-        return issueLocalTokenPair(username, response);
-    }
-
-    private TokenResponse resolveOAuth2Tokens(Object principal,
-                                              String registrationId,
-                                              HttpServletRequest request,
-                                              HttpServletResponse response) {
-        // Пробуем взять access token из cookie (если уже заходили на страницу)
-        String accessToken = extractCookieValue(request, "access_token");
-
-        // Если в cookie нет — берём из principal (работает только сразу после логина,
-        // пока Spring не десериализовал principal из сессии без поля accessToken)
-        if (accessToken == null || accessToken.isBlank()) {
-            if (principal instanceof OidcUserPrincipal oidcUser) {
-                accessToken = oidcUser.getAccessToken();
-            } else if (principal instanceof OAuth2UserPrincipal oauth2User) {
-                accessToken = oauth2User.getAccessToken();
-            }
-        }
-
-        // Кладём в cookie чтобы при следующих запросах он был доступен
-        if (accessToken != null && !accessToken.isBlank()) {
-            setAccessTokenCookie(response, accessToken);
-        }
-
-        String principalName = principal instanceof OidcUserPrincipal o
-                ? o.getUserEntity().getUsername()
-                : ((OAuth2UserPrincipal) principal).getUserEntity().getUsername();
-
-        String refreshToken = authorizedClientRepository
-                .findByClientRegistrationIdAndPrincipalName(registrationId, principalName)
-                .map(entity -> entity.getRefreshTokenValue() != null
-                        ? entity.getRefreshTokenValue()
-                        : "N/A — provider did not supply refresh token (GitHub)")
-                .orElse("N/A");
-
-        return TokenResponse.builder()
-                .accessToken(accessToken != null ? accessToken : "N/A — please re-login")
-                .refreshToken(refreshToken)
-                .provider(registrationId.toUpperCase())
-                .isLocal(false)
-                .build();
+        return issueTokenPair(username, registrationId, response);
     }
 
     @Transactional
     public TokenResponse issueLocalTokenPair(String username, HttpServletResponse response) {
-        String accessToken = jwtTokenService.generateAccessToken(username);
-        String refreshToken = jwtTokenService.generateRefreshToken(username);
+        return issueTokenPair(username, "local", response);
+    }
+
+    @Transactional
+    public TokenResponse issueTokenPair(String username,
+                                        String registrationId,
+                                        HttpServletResponse response) {
+        String accessToken = jwtTokenService.generateAccessToken(username, registrationId);
+        String refreshToken = jwtTokenService.generateRefreshToken(username, registrationId);
         Instant now = Instant.now();
 
         setAccessTokenCookie(response, accessToken);
+        setRefreshTokenCookie(response, refreshToken);
 
         OAuth2AuthorizedClientEntity entity = authorizedClientRepository
-                .findByClientRegistrationIdAndPrincipalName(LOCAL_REGISTRATION_ID, username)
+                .findByClientRegistrationIdAndPrincipalName(registrationId, username)
                 .orElse(OAuth2AuthorizedClientEntity.builder()
-                        .clientRegistrationId(LOCAL_REGISTRATION_ID)
+                        .clientRegistrationId(registrationId)
                         .principalName(username)
                         .build());
 
@@ -205,17 +117,53 @@ public class TokenFacadeService {
         return TokenResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
-                .provider("LOCAL")
-                .isLocal(true)
+                .provider(registrationId.toUpperCase())
+                .isLocal("local".equals(registrationId))
                 .build();
+    }
+
+    /**
+     * Определяет registrationId из authentication.
+     * <p>
+     * Приоритет:
+     * 1. details (String) — выставляется JwtAuthenticationFilter из claim "provider"
+     * 2. тип principal — для первого запроса после OAuth2-логина (до того как фильтр
+     * прочитал наш JWT)
+     * 3. fallback → "local"
+     */
+    private String resolveRegistrationId(Authentication authentication) {
+        // 1. Из JWT claim через JwtAuthenticationFilter
+        Object details = authentication.getDetails();
+        if (details instanceof String provider && !provider.isBlank()) {
+            return provider;
+        }
+
+        // 2. Из типа principal (первый запрос сразу после OAuth2-логина)
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof OidcUserPrincipal) {
+            return "google";
+        }
+        if (principal instanceof OAuth2UserPrincipal oauth2User) {
+            return resolveProviderName(oauth2User.getUserEntity().getProvider());
+        }
+
+        // 3. fallback
+        return "local";
     }
 
     private void setAccessTokenCookie(HttpServletResponse response, String token) {
         Cookie cookie = new Cookie("access_token", token);
         cookie.setHttpOnly(true);
         cookie.setPath("/");
-        cookie.setMaxAge(900); // 15 минут
-        // cookie.setSecure(true); // включить в production (HTTPS)
+        cookie.setMaxAge(900);
+        response.addCookie(cookie);
+    }
+
+    private void setRefreshTokenCookie(HttpServletResponse response, String token) {
+        Cookie cookie = new Cookie("refresh_token", token);
+        cookie.setHttpOnly(true);
+        cookie.setPath("/");
+        cookie.setMaxAge((int) (refreshTokenExpirationMs / 1000));
         response.addCookie(cookie);
     }
 
@@ -231,7 +179,6 @@ public class TokenFacadeService {
     private String resolveProviderName(AuthProvider provider) {
         return switch (provider) {
             case GOOGLE -> "google";
-            case GITHUB -> "github";
             case YANDEX -> "yandex";
             default -> throw new IllegalArgumentException("Not an OAuth2 provider: " + provider);
         };

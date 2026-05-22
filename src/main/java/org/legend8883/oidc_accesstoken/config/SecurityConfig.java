@@ -11,11 +11,13 @@ import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 
 @Configuration
@@ -28,6 +30,9 @@ public class SecurityConfig {
     private final CustomOidcUserService customOidcUserService;
     private final PasswordEncoder passwordEncoder;
     private final ClientRegistrationRepository clientRegistrationRepository;
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final OAuth2LoginSuccessHandler oauth2LoginSuccessHandler;
+    private final LocalLoginSuccessHandler localLoginSuccessHandler;
 
     @Bean
     public AuthenticationManager authenticationManager() {
@@ -46,7 +51,6 @@ public class SecurityConfig {
 
         resolver.setAuthorizationRequestCustomizer(customizer ->
                 customizer.additionalParameters(params -> {
-                    // Получаем уже выставленный registrationId из attributes
                     Object regId = customizer.build().getAttribute(
                             org.springframework.security.oauth2.core.endpoint
                                     .OAuth2ParameterNames.REGISTRATION_ID);
@@ -63,19 +67,21 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf
-                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/", "/login", "/register", "/css/**", "/js/**", "/error").permitAll()
                         .anyRequest().authenticated())
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .formLogin(form -> form
                         .loginPage("/login")
-                        .defaultSuccessUrl("/token", true)
+                        .successHandler(localLoginSuccessHandler)
                         .failureUrl("/login?error")
                         .permitAll())
                 .oauth2Login(oauth2 -> oauth2
                         .loginPage("/login")
-                        .defaultSuccessUrl("/token", true)
+                        .successHandler(oauth2LoginSuccessHandler)
                         .authorizationEndpoint(endpoint -> endpoint
                                 .authorizationRequestResolver(authorizationRequestResolver()))
                         .userInfoEndpoint(userInfo -> userInfo
@@ -86,8 +92,7 @@ public class SecurityConfig {
                         .logoutSuccessUrl("/login?logout")
                         .invalidateHttpSession(true)
                         .clearAuthentication(true)
-                        // Удаляем access_token cookie при logout
-                        .deleteCookies("JSESSIONID", "access_token"));
+                        .deleteCookies("JSESSIONID", "access_token", "refresh_token"));
 
         return http.build();
     }

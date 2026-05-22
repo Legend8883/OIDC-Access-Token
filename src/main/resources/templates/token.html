@@ -19,7 +19,6 @@
     <div class="top-bar-right">
         <span class="user-pill" th:text="${username}"></span>
         <form th:action="@{/logout}" method="post" style="display:inline">
-            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
             <button type="submit" class="btn btn-ghost">Выйти</button>
         </form>
     </div>
@@ -36,11 +35,10 @@
     </div>
 
     <div class="token-grid">
-        <!-- Access Token -->
         <div class="token-card">
             <div class="token-card-header">
                 <span class="token-label">Access Token</span>
-                <span class="token-type-badge" th:text="${tokens.local ? 'JWT (локальный)' : 'OAuth2'}"></span>
+                <span class="token-type-badge">JWT (наш)</span>
             </div>
             <div class="token-value-wrapper">
                 <code class="token-value" id="accessToken">Загрузка...</code>
@@ -53,11 +51,10 @@
             </div>
         </div>
 
-        <!-- Refresh Token -->
         <div class="token-card">
             <div class="token-card-header">
                 <span class="token-label">Refresh Token</span>
-                <span class="token-type-badge" th:text="${tokens.local ? 'JWT (локальный)' : 'OAuth2'}"></span>
+                <span class="token-type-badge">JWT (наш)</span>
             </div>
             <div class="token-value-wrapper">
                 <code class="token-value" id="refreshToken" th:text="${tokens.refreshToken}"></code>
@@ -72,8 +69,7 @@
     </div>
 
     <div class="actions">
-        <form th:action="@{/token/refresh}" method="post" th:if="${tokens.local}">
-            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+        <form th:action="@{/token/refresh}" method="post">
             <button type="submit" class="btn btn-primary">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="23 4 23 10 17 10"/>
@@ -82,32 +78,17 @@
                 Обновить Access Token
             </button>
         </form>
-        <form th:action="@{/token/refresh/oauth2}" method="post" th:unless="${tokens.local}">
-            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
-            <button type="submit" class="btn btn-primary">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="23 4 23 10 17 10"/>
-                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                </svg>
-                Обновить Access Token через провайдер
-            </button>
-        </form>
     </div>
 
-    <div class="info-box" th:if="${tokens.local}">
-        <strong>Локальная аутентификация:</strong> токены генерируются встроенным JWT-сервисом.
+    <div class="info-box">
+        <strong>Авторизация на собственных токенах:</strong>
+        Access Token и Refresh Token — это наши собственные JWT, подписанные нашим секретом.
+        Провайдер (<span th:text="${tokens.provider}"></span>) использовался только для входа.
         Access Token истекает через 15 минут, Refresh Token — через 24 часа.
-    </div>
-    <div class="info-box" th:unless="${tokens.local}">
-        <strong>OAuth2 аутентификация</strong> через <span th:text="${tokens.provider}"></span>.
-        Refresh Token хранится в БД. Access Token получается от провайдера по кнопке выше.
-        Refresh Token может отсутствовать, если провайдер его не предоставляет (GitHub).
     </div>
 </main>
 
 <script>
-    // Access token хранится в httpOnly cookie — JS не может читать её напрямую.
-    // Запрашиваем его через защищённый эндпоинт (доступен только авторизованным).
     fetch('/token/current-access')
         .then(res => res.json())
         .then(data => {

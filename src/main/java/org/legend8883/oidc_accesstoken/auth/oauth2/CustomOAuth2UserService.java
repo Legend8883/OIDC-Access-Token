@@ -25,7 +25,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         String registrationId = userRequest.getClientRegistration().getRegistrationId();
         AuthProvider provider = resolveProvider(registrationId);
 
-        String providerId = extractProviderId(oauth2User, registrationId);
+        String providerId = extractProviderId(oauth2User);
         String email = extractEmail(oauth2User, registrationId);
         String name = extractName(oauth2User, registrationId);
 
@@ -40,27 +40,18 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
     private AuthProvider resolveProvider(String registrationId) {
         return switch (registrationId.toLowerCase()) {
-            case "github" -> AuthProvider.GITHUB;
             case "yandex" -> AuthProvider.YANDEX;
             default -> throw new OAuth2AuthenticationException("Unknown provider: " + registrationId);
         };
     }
 
-    private String extractProviderId(OAuth2User user, String registrationId) {
+    private String extractProviderId(OAuth2User user) {
         Object id = user.getAttribute("id");
-        return switch (registrationId.toLowerCase()) {
-            case "github" -> id != null ? id.toString() : user.getName();
-            case "yandex" -> id != null ? id.toString() : user.getName();
-            default -> user.getName();
-        };
+        return id != null ? id.toString() : user.getName();
     }
 
     private String extractEmail(OAuth2User user, String registrationId) {
         return switch (registrationId.toLowerCase()) {
-            case "github" -> {
-                String email = user.getAttribute("email");
-                yield email != null ? email : user.<String>getAttribute("login") + "@github.local";
-            }
             case "yandex" -> {
                 String email = user.getAttribute("default_email");
                 yield email != null ? email : "";
@@ -71,10 +62,6 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
     private String extractName(OAuth2User user, String registrationId) {
         return switch (registrationId.toLowerCase()) {
-            case "github" -> {
-                String login = user.getAttribute("login");
-                yield login != null ? login : "github_user";
-            }
             case "yandex" -> {
                 String login = user.getAttribute("login");
                 yield login != null ? login : "yandex_user";
